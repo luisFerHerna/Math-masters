@@ -38,28 +38,3 @@ El sistema cumple con los requisitos técnicos de una aplicación multiusuario:
 * **Sincronización de Estados:** Sistema de "Handshake" manual al finalizar cada nivel; el juego no avanza hasta que ambos jugadores confirman estar listos.
 * **Temática Educativa:** Enfocado en agilidad mental matemática (operaciones básicas) para un rango de edad de 10-15 años.
 
----
-
-## 🛠️ Instalación y Ejecución
-
-### Prerrequisitos
-Tener Python 3.x instalado y la librería Pygame:
-```bash
-pip install pygame
-1. Configuración de RedLocal (1 PC): Dejar IP_SERVIDOR = '127.0.0.1' en cliente.py.LAN (2 PCs): 1. Ejecutar el servidor en una máquina y obtener su IP (ej. ipconfig o ifconfig).2. Editar cliente.py y cambiar IP_SERVIDOR por la IP de la máquina servidor.2. Ejecutar el ServidorEn la terminal de la máquina anfitriona:Bashpython servidor.py
-El servidor quedará en espera de 2 conexiones.3. Ejecutar los ClientesEn las terminales de los jugadores (o nuevas terminales):Bashpython cliente.py
-🎮 ControlesAl iniciar, cada cliente puede seleccionar su esquema de control preferido desde el menú:AcciónEsquema 1 (Flechas)Esquema 2 (WASD)Mover Izquierda⬅️ Flecha IzquierdaAMover Derecha➡️ Flecha DerechaDConfirmar/SalirClick Izquierdo del MouseClick Izquierdo del Mouse🎓 Créditos AcadémicosUniversidad Tecnológica de la Mixteca Ingeniería en Computación / DiseñoMateria: Redes de Computadoras IIProfesor: M.C. Mónica E. García GarcíaAlumno: Luis Fernando HernándezFecha: Diciembre 2025
----
-
-### Parte 2: Comandos para hacerlo desde VS Code
-
-Sigue estos pasos en tu Visual Studio Code. Usaremos la terminal integrada para todo, que es la forma más rápida.
-
-#### 1. Abre la Terminal Integrada
-Si no la ves, presiona `Ctrl` + `ñ` (o `Ctrl` + `J`).
-
-#### 2. Crea y abre el archivo
-Escribe este comando. `code` es el comando mágico de VS Code que abre un archivo inmediatamente para editarlo.
-
-```bash
-code README.md
