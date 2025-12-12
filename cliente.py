@@ -14,7 +14,7 @@ FONDO_GRID = (50, 50, 70)
 BLANCO = (240, 240, 240)
 NEGRO = (20, 20, 20)
 # Colores de puertas
-NEON_AZUL = (0, 255, 255)       # Operaciones buenas (+, *)
+NEON_AZUL = (56, 209, 209)       # Operaciones buenas (+, *)
 NEON_ROJO = (255, 50, 80)       # Operaciones malas (-, /)
 NEON_VERDE = (50, 255, 100)     # Feedback positivo
 DORADO = (255, 215, 0)          # Selección / Victoria
