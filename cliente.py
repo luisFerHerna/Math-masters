@@ -4,18 +4,28 @@ import json
 import threading
 import time
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN Y COLORES ---
 ANCHO, ALTO = 800, 600
 TITULO = "Math Masters - Entrega Final"
 
-# Colores
+# Paleta de colores (Estilo Neón/Oscuro)
+FONDO = (30, 30, 40)
+FONDO_GRID = (50, 50, 70)
 BLANCO = (240, 240, 240)
 NEGRO = (20, 20, 20)
-AZUL = (50, 100, 255)
-ROJO = (255, 80, 80)
-VERDE = (50, 200, 100)
-GRIS = (200, 200, 200)
-DORADO = (255, 215, 0)
+# Colores de puertas
+NEON_AZUL = (0, 255, 255)       # Operaciones buenas (+, *)
+NEON_ROJO = (255, 50, 80)       # Operaciones malas (-, /)
+NEON_VERDE = (50, 255, 100)     # Feedback positivo
+DORADO = (255, 215, 0)          # Selección / Victoria
+
+# Opciones de color para la nave del jugador
+COLORES_NAVE = [
+    (0, 255, 0),    # Verde Matrix
+    (255, 0, 255),  # Magenta
+    (255, 165, 0),  # Naranja
+    (0, 191, 255)   # Azul Cielo
+]
 
 IP_SERVIDOR = '127.0.0.1' 
 PUERTO = 5555
@@ -23,35 +33,73 @@ PUERTO = 5555
 pygame.init()
 ventana = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption(TITULO)
-f_grande = pygame.font.SysFont("Arial", 40, bold=True)
-f_media = pygame.font.SysFont("Arial", 28)
-f_chica = pygame.font.SysFont("Arial", 20)
 
-# --- CLASES ---
+# Fuentes
+f_titulo = pygame.font.SysFont("Verdana", 50, bold=True)
+f_grande = pygame.font.SysFont("Verdana", 35, bold=True)
+f_media = pygame.font.SysFont("Verdana", 24)
+f_chica = pygame.font.SysFont("Verdana", 18)
+
+# --- CLASES UI ---
 class Boton:
-    def __init__(self, txt, x, y, w, h, col, acc=None):
+    def __init__(self, txt, x, y, w, h, col, acc=None, es_icono=False):
         self.rect = pygame.Rect(x, y, w, h)
         self.txt = txt
         self.col = col
         self.acc = acc
         self.sel = False 
+        self.es_icono = es_icono
 
     def dibujar(self, surf):
-        color = DORADO if self.sel else self.col
-        grosor = 5 if self.sel else 0
-        pygame.draw.rect(surf, color, self.rect, border_radius=10)
-        if self.sel: pygame.draw.rect(surf, NEGRO, self.rect, 2, border_radius=10)
-        t = f_media.render(self.txt, True, BLANCO if not self.sel else NEGRO)
+        # Efecto de brillo si está seleccionado
+        color_borde = BLANCO if self.sel else self.col
+        grosor_borde = 3 if self.sel else 0
+        
+        # Fondo del botón
+        pygame.draw.rect(surf, self.col, self.rect, border_radius=12)
+        # Borde
+        pygame.draw.rect(surf, color_borde, self.rect, 3, border_radius=12)
+        
+        # Texto
+        color_texto = NEGRO if self.col == DORADO else BLANCO
+        fuente = f_grande if self.es_icono else f_media
+        t = fuente.render(self.txt, True, color_texto)
         surf.blit(t, t.get_rect(center=self.rect.center))
 
     def clic(self, pos):
         return self.acc if self.rect.collidepoint(pos) else None
 
-def texto_centrado(txt, y, fuente, col=NEGRO):
+class SelectorColor:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.seleccionado = 0 # Índice del color
+        self.radios = []
+        for i, c in enumerate(COLORES_NAVE):
+            cx = x + (i * 60)
+            self.radios.append({"rect": pygame.Rect(cx, y, 40, 40), "col": c})
+
+    def dibujar(self, surf):
+        texto_centrado("Elige tu color:", self.y - 30, f_chica, BLANCO)
+        for i, item in enumerate(self.radios):
+            pygame.draw.rect(surf, item["col"], item["rect"], border_radius=50)
+            # Indicar selección
+            if i == self.seleccionado:
+                pygame.draw.circle(surf, BLANCO, item["rect"].center, 25, 3)
+
+    def clic(self, pos):
+        for i, item in enumerate(self.radios):
+            if item["rect"].collidepoint(pos):
+                self.seleccionado = i
+
+def texto_centrado(txt, y, fuente, col=BLANCO):
     obj = fuente.render(txt, True, col)
+    # Sombra negra simple para contraste
+    sombra = fuente.render(txt, True, NEGRO)
+    ventana.blit(sombra, sombra.get_rect(center=(ANCHO//2 + 2, y + 2)))
     ventana.blit(obj, obj.get_rect(center=(ANCHO//2, y)))
 
-# --- WORKERS (HILOS) ---
+# --- WORKERS (RED) ---
 def worker_recibir_nivel(sock, cont):
     try:
         raw = sock.recv(16384).decode()
@@ -66,14 +114,12 @@ def worker_enviar_resultado(sock, pts, cont):
     except: cont['data'] = "ERROR"
 
 def worker_confirmar_siguiente(sock, cont):
-    """Envía señal de listo y espera que el servidor libere la barrera"""
     try:
         sock.send("LISTO".encode())
-        # No esperamos respuesta inmediata aquí, el flujo sigue a esperar nivel
         cont['data'] = "OK"
     except: cont['data'] = "ERROR"
 
-# --- PANTALLA DE CARGA (Evita congelamiento) ---
+# --- PANTALLA DE CARGA ---
 def esperar_con_pantalla_carga(target, msg1, msg2):
     cont = {'data': None}
     t = threading.Thread(target=target, args=(cont,))
@@ -84,20 +130,89 @@ def esperar_con_pantalla_carga(target, msg1, msg2):
     while t.is_alive():
         clock.tick(30)
         anim += 1
-        pts = "." * ((anim // 15) % 4)
+        pts = "." * ((anim // 10) % 4)
         
         for e in pygame.event.get():
             if e.type == pygame.QUIT: return "SALIR"
 
-        ventana.fill(BLANCO)
-        texto_centrado(f"{msg1}{pts}", ALTO//2 - 20, f_grande, AZUL)
-        texto_centrado(msg2, ALTO//2 + 30, f_chica, GRIS)
+        ventana.fill(FONDO)
+        # Dibujar un spinner simple
+        cx, cy = ANCHO//2, ALTO//2 - 50
+        pygame.draw.arc(ventana, NEON_AZUL, (cx-30, cy-30, 60, 60), anim*0.1, anim*0.1 + 1.5, 5)
+        
+        texto_centrado(f"{msg1}{pts}", ALTO//2 + 20, f_grande, BLANCO)
+        texto_centrado(msg2, ALTO//2 + 60, f_chica, (150, 150, 150))
         pygame.display.update()
         
     return cont['data']
 
+# --- AYUDA ---
+def mostrar_ayuda():
+    mostrar = True
+    while mostrar:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT: return False # Cierra todo el juego
+            if e.type == pygame.MOUSEBUTTONDOWN: mostrar = False
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE: mostrar = False
+
+        ventana.fill(FONDO)
+        # Cuadro de dialogo
+        rect_info = pygame.Rect(100, 80, 600, 440)
+        pygame.draw.rect(ventana, (40, 40, 50), rect_info, border_radius=20)
+        pygame.draw.rect(ventana, NEON_AZUL, rect_info, 3, border_radius=20)
+        
+        texto_centrado("CÓMO JUGAR", 110, f_grande, DORADO)
+        
+        instrucciones = [
+            "1. Objetivo: Acumular la mayor cantidad de unidades.",
+            "2. Controles: Usa las FLECHAS (Izquierda/Derecha).",
+            "3. Matemáticas:",
+            "   [+] Suma unidades (BUENO)",
+            "   [*] Multiplica unidades (MUY BUENO)",
+            "   [-] Resta unidades (EVITALO)",
+            "   [/] Divide unidades (PELIGRO)",
+            "",
+            "4. Gana quien tenga más puntos al final de la ronda.",
+            "5. El primero en ganar más rondas gana la partida.",
+            "",
+            "(Haz clic o presiona ESC para volver)"
+        ]
+        
+        y_txt = 170
+        for linea in instrucciones:
+            col = NEON_VERDE if "BUENO" in linea else NEON_ROJO if "PELIGRO" in linea else BLANCO
+            ren = f_media.render(linea, True, col)
+            ventana.blit(ren, (140, y_txt))
+            y_txt += 30
+            
+        pygame.display.update()
+    return True
+
+# --- FUNCIONES DE DIBUJO ---
+def dibujar_nave(surf, x, y, color):
+    # Dibuja un triángulo estilizado (nave)
+    puntos = [(x, y - 20), (x - 15, y + 20), (x + 15, y + 20)]
+    pygame.draw.polygon(surf, color, puntos)
+    # Borde blanco para resaltar
+    pygame.draw.polygon(surf, BLANCO, puntos, 2)
+    # Efecto de motor
+    pygame.draw.circle(surf, (255, 100, 0), (x, y+20), 5)
+
+def dibujar_fondo_grid(surf, offset_y):
+    # Efecto de movimiento en el suelo
+    gap = 100
+    offset_y = offset_y % gap
+    for y in range(int(offset_y) - gap, ALTO, gap):
+        pygame.draw.line(surf, FONDO_GRID, (0, y), (ANCHO, y), 1)
+    
+    # Líneas verticales de carriles
+    w = ANCHO // 3
+    pygame.draw.line(surf, (100, 100, 120), (w, 0), (w, ALTO), 2)
+    pygame.draw.line(surf, (100, 100, 120), (w*2, 0), (w*2, ALTO), 2)
+
 # --- JUGABILIDAD ---
-def jugar_nivel(mapa, vel, control, num_nivel):
+def jugar_nivel(mapa, vel, num_nivel, color_jugador):
     unidades = 10
     carril = 1
     y_puerta = -150
@@ -106,23 +221,20 @@ def jugar_nivel(mapa, vel, control, num_nivel):
     clock = pygame.time.Clock()
     run = True
     feed_txt, feed_timer = "", 0
+    offset_grid = 0
     
     while run:
         clock.tick(30)
+        offset_grid += vel 
+        
         for e in pygame.event.get():
             if e.type == pygame.QUIT: return "SALIR"
             if e.type == pygame.KEYDOWN:
-                izq, der = False, False
-                if control == "FLECHAS":
-                    if e.key == pygame.K_LEFT: izq = True
-                    if e.key == pygame.K_RIGHT: der = True
-                else:
-                    if e.key == pygame.K_a: izq = True
-                    if e.key == pygame.K_d: der = True
-                if izq and carril > 0: carril -= 1
-                if der and carril < 2: carril += 1
+                if e.key == pygame.K_LEFT and carril > 0: carril -= 1
+                if e.key == pygame.K_RIGHT and carril < 2: carril += 1
 
         y_puerta += vel
+        # Lógica de colisión
         if y_puerta >= 450:
             if idx < total:
                 p = mapa[idx][carril]
@@ -134,67 +246,90 @@ def jugar_nivel(mapa, vel, control, num_nivel):
                 elif op == '/': unidades //= val
                 
                 if unidades > ant: feed_txt, feed_timer = "¡BIEN!", 20
-                else: feed_txt, feed_timer = "¡MAL!", 20
+                else: feed_txt, feed_timer = "¡DAÑO!", 20
                 idx += 1
                 y_puerta = -200
             else: run = False
         
         if unidades <= 0: unidades, run = 0, False
 
-        ventana.fill(BLANCO)
-        w = ANCHO // 3
-        pygame.draw.line(ventana, GRIS, (w,0), (w,ALTO), 2)
-        pygame.draw.line(ventana, GRIS, (w*2,0), (w*2,ALTO), 2)
+        # --- DIBUJADO ---
+        ventana.fill(FONDO)
+        dibujar_fondo_grid(ventana, offset_grid)
         
+        w = ANCHO // 3
+        
+        # Dibujar Puertas
         if idx < total:
             for i in range(3):
                 d = mapa[idx][i]
                 x = i * w + 20
-                c = AZUL if d['op'] in ['+', '*'] else ROJO
-                pygame.draw.rect(ventana, c, (x, y_puerta, w-40, 80), 0, 10)
-                t = f_grande.render(f"{d['op']} {d['val']}", True, BLANCO)
-                ventana.blit(t, (x+40, y_puerta+20))
+                # Color basado en si es bueno o malo
+                es_bueno = d['op'] in ['+', '*']
+                c_relleno = (0, 100, 100) if es_bueno else (100, 0, 0) # Oscuro
+                c_borde = NEON_AZUL if es_bueno else NEON_ROJO # Neón
+                
+                rect_puerta = pygame.Rect(x, y_puerta, w-40, 80)
+                
+                # Relleno semitransparente (simulado) y borde neón
+                pygame.draw.rect(ventana, c_relleno, rect_puerta, border_radius=10)
+                pygame.draw.rect(ventana, c_borde, rect_puerta, 3, border_radius=10)
+                
+                txt_op = f"{d['op']} {d['val']}"
+                ren = f_grande.render(txt_op, True, BLANCO)
+                ventana.blit(ren, ren.get_rect(center=rect_puerta.center))
         
+        # Dibujar Jugador
         x_j = carril * w + (w//2)
-        pygame.draw.circle(ventana, VERDE, (x_j, 500), 30)
-        tn = f_chica.render(str(unidades), True, NEGRO)
-        ventana.blit(tn, tn.get_rect(center=(x_j, 500)))
+        dibujar_nave(ventana, x_j, 500, color_jugador)
         
-        texto_centrado(f"NIVEL {num_nivel}/10", 30, f_grande)
-        texto_centrado(f"Progreso: {idx}/{total}", 70, f_chica)
+        # Texto flotante de unidades
+        tn = f_media.render(f"{unidades}", True, BLANCO)
+        ventana.blit(tn, (x_j - tn.get_width()//2, 530))
+        
+        # UI Superior
+        pygame.draw.rect(ventana, (0,0,0), (0,0, ANCHO, 90)) # Barra negra sup
+        texto_centrado(f"NIVEL {num_nivel}/10", 25, f_grande, DORADO)
+        # Barra de progreso
+        ancho_barra = 400
+        progreso = (idx / total) * ancho_barra
+        pygame.draw.rect(ventana, (100,100,100), (ANCHO//2 - 200, 60, ancho_barra, 10))
+        pygame.draw.rect(ventana, NEON_AZUL, (ANCHO//2 - 200, 60, progreso, 10))
+        
+        # Feedback visual
         if feed_timer > 0:
-            c = VERDE if feed_txt == "¡BIEN!" else ROJO
+            c = NEON_VERDE if feed_txt == "¡BIEN!" else NEON_ROJO
             t = f_grande.render(feed_txt, True, c)
-            ventana.blit(t, (x_j+40, 450))
+            ventana.blit(t, (x_j+40, 480))
             feed_timer -= 1
         pygame.display.update()
         
     return unidades
 
-# --- LOOP PRINCIPAL ---
-def gestor_partida(sock, controles):
+# --- LOOP DE PARTIDA COMPLETA ---
+def gestor_partida(sock, color_jugador):
     victorias_yo = 0
     victorias_rival = 0
     
     for i in range(1, 11):
         # 1. Esperar Nivel
         w_niv = lambda c: worker_recibir_nivel(sock, c)
-        data = esperar_con_pantalla_carga(w_niv, f"Cargando Nivel {i}", "Sincronizando...")
+        data = esperar_con_pantalla_carga(w_niv, f"Cargando Nivel {i}", "Sincronizando con servidor...")
         if data in ["ERROR", "SALIR", None]: return "MENU"
         
         # 2. Jugar
-        pts = jugar_nivel(data["mapa"], data["velocidad"], controles, i)
+        pts = jugar_nivel(data["mapa"], data["velocidad"], i, color_jugador)
         if pts == "SALIR": return "MENU"
         
-        # 3. Enviar Puntaje y Esperar Resultado
-        msg_w = "Esperando al rival..." if pts > 0 else "Has perdido. Esperando rival..."
+        # 3. Enviar Puntaje
+        msg_w = "Esperando al rival..."
         w_res = lambda c: worker_enviar_resultado(sock, pts, c)
-        res = esperar_con_pantalla_carga(w_res, "Calculando", msg_w)
+        res = esperar_con_pantalla_carga(w_res, "Procesando Resultados", msg_w)
         if res in ["ERROR", "SALIR", None]: return "MENU"
         
-        # 4. MOSTRAR RESULTADOS Y ESPERAR CLICK
+        # 4. RESULTADOS DE RONDA
         esperando_click = True
-        btn_next = Boton("SIGUIENTE NIVEL", ANCHO//2 - 125, 500, 250, 60, AZUL, "NEXT")
+        btn_next = Boton("SIGUIENTE NIVEL", ANCHO//2 - 125, 500, 250, 60, NEON_AZUL, "NEXT")
         
         while esperando_click:
             pos = pygame.mouse.get_pos()
@@ -202,34 +337,32 @@ def gestor_partida(sock, controles):
                 if e.type == pygame.QUIT: return "MENU"
                 if e.type == pygame.MOUSEBUTTONDOWN:
                     if btn_next.clic(pos):
-                        # Enviar confirmación al servidor
                         w_conf = lambda c: worker_confirmar_siguiente(sock, c)
-                        # Esto es rápido, pero necesario para liberar la barrera
-                        esperar_con_pantalla_carga(w_conf, "Confirmando...", "")
+                        esperar_con_pantalla_carga(w_conf, "Esperando al otro jugador", "")
                         esperando_click = False
 
-            ventana.fill(BLANCO)
+            ventana.fill(FONDO)
             est = res["estado"]
-            col = VERDE if est == "GANASTE" else ROJO if est == "PERDISTE" else AZUL
+            col = NEON_VERDE if est == "GANASTE" else NEON_ROJO if est == "PERDISTE" else BLANCO
             
-            texto_centrado(f"FIN DEL NIVEL {i}", 50, f_media)
-            texto_centrado(est, 120, f_grande, col)
+            texto_centrado(f"RESULTADO NIVEL {i}", 50, f_media, BLANCO)
+            texto_centrado(est, 120, f_titulo, col)
             
-            texto_centrado(f"Tú: {res['mis_puntos']}", 200, f_media)
-            texto_centrado(f"Rival: {res['rival_puntos']}", 240, f_media)
+            # Tarjeta de stats
+            pygame.draw.rect(ventana, (40,40,50), (ANCHO//2-150, 180, 300, 120), border_radius=15)
+            texto_centrado(f"Tú: {res['mis_puntos']}", 210, f_media, color_jugador)
+            texto_centrado(f"Rival: {res['rival_puntos']}", 250, f_media, (200,200,200))
             
-            v_yo, v_riv = res["mis_victorias"], res["rival_victorias"]
-            victorias_yo, victorias_rival = v_yo, v_riv
+            victorias_yo, victorias_rival = res["mis_victorias"], res["rival_victorias"]
             
-            texto_centrado("--- GLOBAL ---", 320, f_chica, GRIS)
-            texto_centrado(f"{v_yo} - {v_riv}", 350, f_grande, DORADO)
+            texto_centrado("--- MARCADOR GLOBAL ---", 340, f_chica, (150,150,150))
+            texto_centrado(f"{victorias_yo} - {victorias_rival}", 370, f_grande, DORADO)
             
-            # Botón de espera
             btn_next.dibujar(ventana)
             pygame.display.update()
 
-    # --- FINAL DEL JUEGO (NIVEL 10 ACABADO) ---
-    btn_salir = Boton("SALIR AL MENU", ANCHO//2 - 100, 500, 200, 60, ROJO, "SALIR")
+    # --- FINAL DEL JUEGO ---
+    btn_salir = Boton("VOLVER AL MENÚ", ANCHO//2 - 125, 500, 250, 60, NEON_ROJO, "SALIR")
     while True:
         pos = pygame.mouse.get_pos()
         for e in pygame.event.get():
@@ -237,55 +370,75 @@ def gestor_partida(sock, controles):
             if e.type == pygame.MOUSEBUTTONDOWN:
                 if btn_salir.clic(pos): return "MENU"
 
-        ventana.fill(BLANCO)
-        texto_centrado("JUEGO TERMINADO", 100, f_grande, AZUL)
+        ventana.fill(FONDO)
+        texto_centrado("JUEGO TERMINADO", 100, f_titulo, NEON_AZUL)
         
-        msg = "¡VICTORIA TOTAL!" if victorias_yo > victorias_rival else "DERROTA"
-        col = VERDE if victorias_yo > victorias_rival else ROJO
-        if victorias_yo == victorias_rival: msg, col = "EMPATE", AZUL
+        msg = "¡VICTORIA SUPREMA!" if victorias_yo > victorias_rival else "DERROTA"
+        col = NEON_VERDE if victorias_yo > victorias_rival else NEON_ROJO
+        if victorias_yo == victorias_rival: msg, col = "EMPATE TÉCNICO", BLANCO
         
-        texto_centrado(msg, 250, f_grande, col)
-        texto_centrado(f"Marcador Final: {victorias_yo} - {victorias_rival}", 350, f_media)
+        texto_centrado(msg, 250, f_titulo, col)
+        texto_centrado(f"Marcador Final: {victorias_yo} - {victorias_rival}", 350, f_grande, BLANCO)
         
         btn_salir.dibujar(ventana)
         pygame.display.update()
 
 def main():
     est = "MENU"
-    ctrl = "FLECHAS"
-    b_play = Boton("JUGAR", ANCHO//2-100, 450, 200, 60, AZUL, "JUGAR")
-    b_arr = Boton("Flechas", ANCHO//2-160, 350, 150, 50, GRIS)
-    b_wsd = Boton("WASD", ANCHO//2+10, 350, 150, 50, GRIS)
-    b_arr.sel = True
+    
+    # Elementos del Menu
+    b_play = Boton("CONECTAR Y JUGAR", ANCHO//2-150, 480, 300, 70, NEON_AZUL, "JUGAR")
+    b_help = Boton("?", ANCHO - 70, 20, 50, 50, DORADO, "HELP", es_icono=True)
+    selector = SelectorColor(ANCHO//2 - 100, 350)
 
     run = True
     while run:
         pos = pygame.mouse.get_pos()
         for e in pygame.event.get():
             if e.type == pygame.QUIT: run = False
-            if e.type == pygame.MOUSEBUTTONDOWN and est == "MENU":
-                if b_arr.clic(pos): ctrl, b_arr.sel, b_wsd.sel = "FLECHAS", True, False
-                elif b_wsd.clic(pos): ctrl, b_arr.sel, b_wsd.sel = "WASD", False, True
-                
-                if b_play.clic(pos):
-                    try:
-                        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        s.connect((IP_SERVIDOR, PUERTO))
-                        est = gestor_partida(s, ctrl)
-                        s.close()
-                    except: est = "ERROR"
             
-            if e.type == pygame.MOUSEBUTTONDOWN and est == "ERROR": est = "MENU"
+            if e.type == pygame.MOUSEBUTTONDOWN:
+                if est == "MENU":
+                    selector.clic(pos) # Actualizar selección de color
+                    
+                    if b_help.clic(pos):
+                        continuar = mostrar_ayuda()
+                        if not continuar: run = False # Si cierra la ayuda con X
+                    
+                    elif b_play.clic(pos):
+                        try:
+                            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            s.connect((IP_SERVIDOR, PUERTO))
+                            # Obtenemos color seleccionado
+                            col_elegido = selector.radios[selector.seleccionado]["col"]
+                            est = gestor_partida(s, col_elegido)
+                            s.close()
+                        except Exception as ex:
+                            print(ex)
+                            est = "ERROR"
+                
+                elif est == "ERROR":
+                    est = "MENU"
 
-        ventana.fill(BLANCO)
+        ventana.fill(FONDO)
         if est == "MENU":
-            texto_centrado("MATH MASTERS", 150, f_grande, AZUL)
-            texto_centrado("Elige Controles:", 300, f_chica)
-            b_arr.dibujar(ventana)
-            b_wsd.dibujar(ventana)
+            # Título con sombra
+            texto_centrado("MATH MASTERS", 150, f_titulo, NEON_AZUL)
+            texto_centrado("Edición Multijugador", 200, f_media, BLANCO)
+            
+            selector.dibujar(ventana)
             b_play.dibujar(ventana)
+            b_help.dibujar(ventana)
+            
+            # Dibujar preview del jugador
+            col_act = selector.radios[selector.seleccionado]["col"]
+            dibujar_nave(ventana, ANCHO//2, 280, col_act)
+
         elif est == "ERROR":
-            texto_centrado("Error de conexión", ALTO//2, f_media, ROJO)
+            texto_centrado("NO SE PUDO CONECTAR", ALTO//2 - 30, f_grande, NEON_ROJO)
+            texto_centrado("Asegúrate que servidor.py esté corriendo", ALTO//2 + 20, f_chica, BLANCO)
+            texto_centrado("Haz clic para volver", ALTO - 100, f_media, (150,150,150))
+            
         pygame.display.update()
     pygame.quit()
 
